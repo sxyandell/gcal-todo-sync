@@ -12,8 +12,9 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(bodyParser.json());
 
-// In-memory storage for todos (in production, use a database)
+// In-memory storage for todos and daily saves (in production, use a database)
 let todos = [];
+let dailySaves = [];
 
 // Google Calendar setup
 const oauth2Client = new google.auth.OAuth2(
@@ -23,6 +24,65 @@ const oauth2Client = new google.auth.OAuth2(
 );
 
 const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+// Function to get today's date string
+const getTodayString = () => {
+  const today = new Date();
+  return today.toISOString().split('T')[0]; // YYYY-MM-DD format
+};
+
+// Function to save daily tasks
+const saveDailyTasks = () => {
+  const today = getTodayString();
+  
+  // Check if we already have a save for today
+  const existingSaveIndex = dailySaves.findIndex(save => save.date === today);
+  
+  const dailySave = {
+    id: uuidv4(),
+    date: today,
+    tasks: todos.map(todo => ({
+      id: todo.id,
+      title: todo.title,
+      description: todo.description,
+      dueDate: todo.dueDate,
+      priority: todo.priority,
+      completed: todo.completed,
+      createdAt: todo.createdAt
+    })),
+    savedAt: new Date().toISOString()
+  };
+
+  if (existingSaveIndex !== -1) {
+    // Update existing save
+    dailySaves[existingSaveIndex] = dailySave;
+  } else {
+    // Add new save
+    dailySaves.push(dailySave);
+  }
+
+  console.log(`Daily tasks saved for ${today}: ${dailySave.tasks.length} tasks`);
+  return dailySave;
+};
+
+// Schedule daily save at 11:59 PM
+const scheduleDailySave = () => {
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(23, 59, 0, 0);
+  
+  const timeUntilMidnight = tomorrow.getTime() - now.getTime();
+  
+  setTimeout(() => {
+    saveDailyTasks();
+    // Schedule next save for tomorrow
+    scheduleDailySave();
+  }, timeUntilMidnight);
+};
+
+// Start the daily save scheduler
+scheduleDailySave();
 
 // Routes
 app.get('/api/todos', (req, res) => {
@@ -149,6 +209,50 @@ app.delete('/api/todos/:id', async (req, res) => {
   res.json({ message: 'Todo deleted successfully' });
 });
 
+// Daily save routes
+app.post('/api/daily-save', (req, res) => {
+  try {
+    const dailySave = saveDailyTasks();
+    res.json(dailySave);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to save daily tasks' });
+  }
+});
+
+app.get('/api/daily-saves', (req, res) => {
+  res.json(dailySaves);
+});
+
+app.get('/api/daily-saves/:date', (req, res) => {
+  const { date } = req.params;
+  const dailySave = dailySaves.find(save => save.date === date);
+  
+  if (!dailySave) {
+    return res.status(404).json({ error: 'Daily save not found' });
+  }
+  
+  res.json(dailySave);
+});
+
+app.post('/api/daily-saves/:date/restore', (req, res) => {
+  const { date } = req.params;
+  const dailySave = dailySaves.find(save => save.date === date);
+  
+  if (!dailySave) {
+    return res.status(404).json({ error: 'Daily save not found' });
+  }
+  
+  // Restore tasks from the selected date
+  todos = dailySave.tasks.map(task => ({
+    ...task,
+    id: uuidv4(), // Generate new IDs to avoid conflicts
+    createdAt: new Date().toISOString(),
+    syncedToGCal: false
+  }));
+  
+  res.json({ message: 'Tasks restored successfully', tasks: todos });
+});
+
 // Google Calendar authentication routes
 app.get('/api/auth/google', (req, res) => {
   const scopes = [
@@ -186,4 +290,5 @@ app.get('/api/auth/google/callback', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log('Google Calendar integration ready');
+  console.log('Daily save scheduler started');
 }); 
