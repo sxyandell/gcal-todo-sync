@@ -45,6 +45,7 @@ const saveDailyTasks = () => {
       id: todo.id,
       title: todo.title,
       description: todo.description,
+      section: todo.section || 'Today',
       dueDate: todo.dueDate,
       priority: todo.priority,
       completed: todo.completed,
@@ -91,12 +92,13 @@ app.get('/api/todos', (req, res) => {
 
 app.post('/api/todos', async (req, res) => {
   try {
-    const { title, description, dueDate, priority } = req.body;
+    const { title, description, section, dueDate, priority } = req.body;
     
     const newTodo = {
       id: uuidv4(),
       title,
       description: description || '',
+      section: section || 'Today',
       dueDate: dueDate || null,
       priority: priority || 'medium',
       completed: false,
@@ -155,7 +157,7 @@ app.post('/api/todos', async (req, res) => {
 
 app.put('/api/todos/:id', (req, res) => {
   const { id } = req.params;
-  const { title, description, dueDate, priority, completed } = req.body;
+  const { title, description, section, dueDate, priority, completed } = req.body;
   
   const todoIndex = todos.findIndex(todo => todo.id === id);
   
@@ -167,6 +169,7 @@ app.put('/api/todos/:id', (req, res) => {
     ...todos[todoIndex],
     title: title || todos[todoIndex].title,
     description: description !== undefined ? description : todos[todoIndex].description,
+    section: section || todos[todoIndex].section || 'Today',
     dueDate: dueDate !== undefined ? dueDate : todos[todoIndex].dueDate,
     priority: priority || todos[todoIndex].priority,
     completed: completed !== undefined ? completed : todos[todoIndex].completed,
